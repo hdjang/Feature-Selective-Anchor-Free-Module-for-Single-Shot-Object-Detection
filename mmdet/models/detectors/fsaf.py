@@ -29,3 +29,4 @@ class FSAF(SingleStageDetector):
         losses = self.bbox_head.loss(*loss_inputs, gt_bboxes_ignore=gt_bboxes_ignore)
         
         return losses
+    

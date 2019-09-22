@@ -124,7 +124,7 @@ total_epochs = 6
 device_ids = range(8)
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = './work_dirs/retinanet_r50_fpn_050x_fsaf_exp1'
+work_dir = './work_dirs/fsaf_r50_400_050x'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]

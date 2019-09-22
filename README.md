@@ -18,9 +18,11 @@ To use this repo, please follow [README.md](./README_MMDetection.md) of MMDetect
 ```
 - To train FSAF implementation
 ```Shell
-./tools/dist_train_fsaf_exp1_050x.sh
+./tools/dist_train_fsaf_r50_400_050x.sh
 ```
 **Eval**
+For evaluation, pretrained model-weights should be located at "./models/here".
+
 - To evaluate baseline (i.e., RetinaNet)
 ```Shell
 ./tools/eval_retinanet_r50_400_075x.sh
@@ -28,7 +30,7 @@ To use this repo, please follow [README.md](./README_MMDetection.md) of MMDetect
 ```
 - To evaluate FSAF implementation
 ```Shell
-./tools/eval_fsaf_exp1_050x.sh
+./tools/eval_fsaf_r50_400_050x.sh
 ```
 
 
@@ -36,12 +38,14 @@ To use this repo, please follow [README.md](./README_MMDetection.md) of MMDetect
 
 Below is the benchmark results. We train all models with an img-size of 400 and reduced LR-schedule for efficient experiments.
 
+- Currently, this repo only provides train/eval codes for FSAF, and do not provides benchmarks and pretrained model due to its slow training speed. 
+
 |  model     |    backbone    | img-size | LR-schd | box AP | download |
 |:----------:|:-------------: | :-----:  | :-----: | :----: | :------: |
 | RetinaNet  |    R-50-FPN    |   400    |  0.75x  |  29.7  |  [model](https://drive.google.com/open?id=1AQYh1vVhPF8w8U_rt_iaHbHXhli7A_gi)  |
 | RetinaNet  |    R-50-FPN    |   400    |  0.50x  |  27.9  |  [model](https://drive.google.com/open?id=1cijBcaLAtwqkrNmtgaLw6-VOByZ5pQTs)  |
 |:----------:|:-------------: | :-----:  | :-----: | :----: | :------: |
-| FSAF       |    R-50-FPN    |   400    |  0.50x  |  -     |  [model](https://)  |
+| FSAF       |    R-50-FPN    |   400    |  0.50x  |   -    |    -     |
 
 
 ## Contact

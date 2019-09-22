@@ -11,6 +11,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from ..losses import sigmoid_focal_loss, FocalLoss, iou_loss
+from mmdet.core import (AnchorGenerator, anchor_target, delta2bbox, force_fp32,
+                        multi_apply, multiclass_nms)
 import pdb
 
 
@@ -103,6 +105,96 @@ class FSAFHead(AnchorHead):
         
         return cls_score, bbox_pred
     
+    
+    
+    def loss_single(self,
+             cls_scores,
+             bbox_preds,
+             cls_targets_list,
+             reg_targets_list,
+             img_metas,
+             cfg,
+             gt_bboxes_ignore=None):
+        device = cls_scores[0].device
+        num_imgs = cls_targets_list.shape[0]
+        
+        # loss-cls
+        scores = cls_scores.permute(0,2,3,1).reshape(-1,1)
+        labels = cls_targets_list.permute(0,2,3,1).reshape(-1)
+        valid_cls_idx = labels != -1
+        loss_cls = sigmoid_focal_loss(scores[valid_cls_idx], labels[valid_cls_idx],
+                           gamma=self.FL_gamma, alpha=self.FL_alpha, reduction='sum')
+        norm_cls = (labels == 1).long().sum()
+        #loss_cls /= norm_cls
+        
+        # loss-reg
+        offsets = bbox_preds.permute(0,2,3,1).reshape(-1,4)
+        gtboxes = reg_targets_list.permute(0,2,3,1).reshape(-1,4)
+        valid_reg_idx = (gtboxes[:,0] != -1)
+        if valid_reg_idx.long().sum() != 0:
+            offsets = offsets[valid_reg_idx]
+            gtboxes = gtboxes[valid_reg_idx]
+
+            H,W = bbox_preds.shape[2:]
+            y,x = torch.meshgrid([torch.arange(0,H), torch.arange(0,W)])
+            xy = torch.cat([x.unsqueeze(2),y.unsqueeze(2)], dim=2).float().to(device)
+            xy = xy.permute(2,0,1).unsqueeze(0).repeat(num_imgs,1,1,1)
+            xy = xy.permute(0,2,3,1).reshape(-1,2)
+            xy = xy[valid_reg_idx]
+            w = (offsets[:,1] + offsets[:,3]).unsqueeze(1) * self.bbox_offset_norm
+            h = (offsets[:,0] + offsets[:,2]).unsqueeze(1) * self.bbox_offset_norm
+            bbox_xywh = torch.cat([xy,w,h], dim=1)  # (N,4)
+            bbox_xyxy = self.xywh2xyxy(bbox_xywh)
+
+            loss_reg = iou_loss(bbox_xyxy, gtboxes)
+            norm_reg = valid_reg_idx.long().sum()
+            #loss_reg /= norm_reg
+        else:
+            loss_reg = torch.tensor(0).float().to(device)
+            norm_reg = torch.tensor(0).float().to(device)
+        
+        return loss_cls, loss_reg, norm_cls, norm_reg
+
+    def loss(self,
+             cls_scores,
+             bbox_preds,
+             gt_bboxes,
+             gt_labels,
+             img_metas,
+             cfg,
+             gt_bboxes_ignore=None):
+        
+        cls_reg_targets = self.fsaf_target(
+            cls_scores,
+            bbox_preds,
+            gt_bboxes,
+            gt_labels,
+            img_metas,
+            cfg,
+            gt_bboxes_ignore_list=gt_bboxes_ignore)
+        
+        (cls_targets_list, reg_targets_list) = cls_reg_targets
+        
+        loss_cls, loss_reg, norm_cls, norm_reg = multi_apply(
+             self.loss_single,
+             cls_scores,
+             bbox_preds,
+             cls_targets_list,
+             reg_targets_list,
+             img_metas=img_metas,
+             cfg=cfg,
+             gt_bboxes_ignore=None)
+        
+        loss_cls = sum(loss_cls)/sum(norm_cls)
+        loss_reg = sum(loss_reg)/sum(norm_reg)
+        
+        return dict(loss_cls=loss_cls, loss_bbox=loss_reg)
+    
+    
+    '''
+    #----------------------
+    # loss w/o multi_apply()
+    #----------------------
     def loss(self,
              cls_scores,
              bbox_preds,
@@ -167,6 +259,7 @@ class FSAFHead(AnchorHead):
         loss_reg /= norm_reg
         #pdb.set_trace()
         return dict(loss_cls=loss_cls, loss_bbox=loss_reg)
+    '''
     
     def fsaf_target(self,
                      cls_scores,
@@ -342,13 +435,63 @@ class FSAFHead(AnchorHead):
             return torch.cat((xywh[0:2] - 0.5 * xywh[2:4], xywh[0:2] + 0.5 * xywh[2:4]), dim=0)
         else:
             return torch.cat((xywh[:, 0:2] - 0.5 * xywh[:, 2:4], xywh[:, 0:2] + 0.5 * xywh[:, 2:4]), dim=1)
+        
+        
+    def get_bboxes(self, cls_scores, bbox_preds, img_metas, cfg,
+                   rescale=False):
+        # Only single-img evaluation is available now
+        num_levels = len(cls_scores)
+        assert len(cls_scores) == len(bbox_preds) == num_levels
+        device = bbox_preds[0].device
+        dtype = bbox_preds[0].dtype
+        scale_factor = img_metas[0]['scale_factor']
+        
+        xy_list = []
+        for level in range(num_levels):
+            H,W = bbox_preds[level].shape[2:]
+            y,x = torch.meshgrid([torch.arange(0,H), torch.arange(0,W)])
+            xy = torch.cat([x.unsqueeze(2),y.unsqueeze(2)], dim=2).float().to(device)
+            xy = xy.permute(2,0,1).unsqueeze(0)
+            xy_list.append(xy)
+            
+        mlvl_bboxes = []
+        mlvl_scores = []
+        for cls_score, bbox_pred, xy in zip(cls_scores, bbox_preds, xy_list):
+            assert cls_score.size()[-2:] == bbox_pred.size()[-2:]
+            cls_score = cls_score[0].permute(1, 2, 0).reshape(
+                -1, self.cls_out_channels)
+            scores = cls_score.sigmoid()
+            bbox_pred = bbox_pred[0].permute(1, 2, 0).reshape(-1, 4)
+            xy = xy[0].permute(1,2,0).reshape(-1,2)
+            nms_pre = cfg.get('nms_pre', -1)
+            if nms_pre > 0 and scores.shape[0] > nms_pre:
+                max_scores, _ = scores.max(dim=1)
+                _, topk_inds = max_scores.topk(nms_pre)
+                bbox_pred = bbox_pred[topk_inds, :]
+                scores = scores[topk_inds, :]
+                xy = xy[topk_inds, :]
+            
+            # decode offsets to get bbox
+            w = (bbox_pred[:,1] + bbox_pred[:,3]).unsqueeze(1) * self.bbox_offset_norm
+            h = (bbox_pred[:,0] + bbox_pred[:,2]).unsqueeze(1) * self.bbox_offset_norm
+            bbox_xywh = torch.cat([xy,w,h], dim=1)  # (N,4)
+            bbox_xyxy = self.xywh2xyxy(bbox_xywh)
+            
+            mlvl_bboxes.append(bbox_xyxy)
+            mlvl_scores.append(scores)
+        mlvl_bboxes = torch.cat(mlvl_bboxes)
+        
+        if rescale:
+            mlvl_bboxes /= mlvl_bboxes.new_tensor(scale_factor)
+        mlvl_scores = torch.cat(mlvl_scores)
+        padding = mlvl_scores.new_zeros(mlvl_scores.shape[0], 1)
+        mlvl_scores = torch.cat([padding, mlvl_scores], dim=1)
+        det_bboxes, det_labels = multiclass_nms(
+            mlvl_bboxes, mlvl_scores, cfg.score_thr, cfg.nms, cfg.max_per_img)
+        return [(det_bboxes, det_labels)]
     
     
-    
-    
-    
-    
-    
+        
     
     
     

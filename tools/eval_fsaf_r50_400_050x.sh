@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 PYTHON=${PYTHON:-"python"}
-CONFIG=./configs/retinanet_r50_400_075x.py
-CKPT=./models/retinanet_r50_400_075x.pth
-OUT=./models/results_retinanet_r50_400_075x.pkl
+CONFIG=./configs/fsaf_r50_400_050x.py
+CKPT=./models/fsaf_r50_400_050x_epoch_1.pth
+OUT=./models/results_fsaf_r50_400_050x.pkl
 
 CUDA_VISIBLE_DEVICES=1 $PYTHON $(dirname "$0")/test.py \
                                                $CONFIG     \
