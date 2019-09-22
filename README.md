@@ -44,7 +44,6 @@ Currently, for the FSAF, this repo only provides train/eval codes and does not p
 |:----------:|:-------------: | :-----:  | :-----: | :----: | :------: |
 | RetinaNet  |    R-50-FPN    |   400    |  0.75x  |  29.7  |  [model](https://drive.google.com/open?id=1AQYh1vVhPF8w8U_rt_iaHbHXhli7A_gi)  |
 | RetinaNet  |    R-50-FPN    |   400    |  0.50x  |  27.9  |  [model](https://drive.google.com/open?id=1cijBcaLAtwqkrNmtgaLw6-VOByZ5pQTs)  |
-|:----------:|:-------------: | :-----:  | :-----: | :----: | :------: |
 | FSAF       |    R-50-FPN    |   400    |  0.50x  |   -    |    -     |
 
 
