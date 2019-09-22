@@ -1,6 +1,6 @@
 ## Description
 
-This repository implements "Zhu et al. Feature Selective Anchor-Free Module for Single-Shot Object Detection. CVPR, 2019." (FSAF) [PDF](https://arxiv.org/pdf/1903.00621.pdf). The implementation is based on MMDetection framework. All the extra codes that are added to the baseline (i.e., RetinaNet) is written according to the original paper.
+This repository implements "Zhu et al. Feature Selective Anchor-Free Module for Single-Shot Object Detection. CVPR, 2019." (FSAF) [PDF](https://arxiv.org/pdf/1903.00621.pdf). The implementation is based on MMDetection framework. All the codes for the FSAF model follow the original paper.
 
 
 ## Get Started
