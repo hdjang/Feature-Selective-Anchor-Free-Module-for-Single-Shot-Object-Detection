@@ -38,7 +38,7 @@ For evaluation, pretrained model-weights should be located at "./models/here".
 
 Below is the benchmark results. We train all models with an img-size of 400 and reduced LR-schedule for efficient experiments.
 
-Currently, for the FSAF, this repo only provides train/eval codes and does not provide benchmark result and pretrained model due to slow training speed of the model.
+Currently, for the FSAF, this repo only provides train/eval codes, and can not provide benchmark result and pretrained model due to slow training speed of the model.
 
 |  model     |    backbone    | img-size | LR-schd | box AP | download |
 |:----------:|:-------------: | :-----:  | :-----: | :----: | :------: |
