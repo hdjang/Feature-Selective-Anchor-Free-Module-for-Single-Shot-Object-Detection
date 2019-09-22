@@ -10,7 +10,7 @@ To use this repo, please follow [README.md](./README_MMDetection.md) of MMDetect
 
 ## Train/Eval
 
-**train**
+**Train**
 - To train baseline (i.e., RetinaNet)
 ```Shell
 ./tools/dist_train_retinanet_r50_400_075x.sh
@@ -20,7 +20,7 @@ To use this repo, please follow [README.md](./README_MMDetection.md) of MMDetect
 ```Shell
 ./tools/dist_train_fsaf_exp1_050x.sh
 ```
-**eval**
+**Eval**
 - To evaluate baseline (i.e., RetinaNet)
 ```Shell
 ./tools/eval_retinanet_r50_400_075x.sh
@@ -41,7 +41,7 @@ Below is the benchmark results. We train all models with an img-size of 400 and 
 | RetinaNet  |    R-50-FPN    |   400    |  0.75x  |  29.7  |  [model](https://drive.google.com/open?id=1AQYh1vVhPF8w8U_rt_iaHbHXhli7A_gi)  |
 | RetinaNet  |    R-50-FPN    |   400    |  0.50x  |  27.9  |  [model](https://drive.google.com/open?id=1cijBcaLAtwqkrNmtgaLw6-VOByZ5pQTs)  |
 |:----------:|:-------------: | :-----:  | :-----: | :----: | :------: |
-| FSAF       |    R-50-FPN    |   400    |  0.50x  |  -     |  [model](https:??.pth)  |
+| FSAF       |    R-50-FPN    |   400    |  0.50x  |  -     |  [model](https://)  |
 
 
 ## Contact
