@@ -21,6 +21,7 @@ To use this repo, please follow [README.md](./README_MMDetection.md) of MMDetect
 ./tools/dist_train_fsaf_r50_400_050x.sh
 ```
 **Eval**
+
 For evaluation, pretrained model-weights should be located at "./models/here".
 
 - To evaluate baseline (i.e., RetinaNet)
