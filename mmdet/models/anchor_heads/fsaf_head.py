@@ -105,13 +105,12 @@ class FSAFHead(AnchorHead):
         
         return cls_score, bbox_pred
     
-    
-    
     def loss_single(self,
              cls_scores,
              bbox_preds,
              cls_targets_list,
              reg_targets_list,
+             level,
              img_metas,
              cfg,
              gt_bboxes_ignore=None):
@@ -134,15 +133,17 @@ class FSAFHead(AnchorHead):
         if valid_reg_idx.long().sum() != 0:
             offsets = offsets[valid_reg_idx]
             gtboxes = gtboxes[valid_reg_idx]
-
+            
             H,W = bbox_preds.shape[2:]
             y,x = torch.meshgrid([torch.arange(0,H), torch.arange(0,W)])
+            y = (y.float() + 0.5) * self.feat_strides[level]
+            x = (x.float() + 0.5) * self.feat_strides[level]
             xy = torch.cat([x.unsqueeze(2),y.unsqueeze(2)], dim=2).float().to(device)
             xy = xy.permute(2,0,1).unsqueeze(0).repeat(num_imgs,1,1,1)
             xy = xy.permute(0,2,3,1).reshape(-1,2)
             xy = xy[valid_reg_idx]
-            w = (offsets[:,1] + offsets[:,3]).unsqueeze(1) * self.bbox_offset_norm
-            h = (offsets[:,0] + offsets[:,2]).unsqueeze(1) * self.bbox_offset_norm
+            w = (offsets[:,1] + offsets[:,3]).unsqueeze(1) * self.bbox_offset_norm * self.feat_strides[level]
+            h = (offsets[:,0] + offsets[:,2]).unsqueeze(1) * self.bbox_offset_norm * self.feat_strides[level]
             bbox_xywh = torch.cat([xy,w,h], dim=1)  # (N,4)
             bbox_xyxy = self.xywh2xyxy(bbox_xywh)
 
@@ -175,12 +176,14 @@ class FSAFHead(AnchorHead):
         
         (cls_targets_list, reg_targets_list) = cls_reg_targets
         
+        level_list = [i for i in range(len(self.feat_strides))]
         loss_cls, loss_reg, norm_cls, norm_reg = multi_apply(
              self.loss_single,
              cls_scores,
              bbox_preds,
              cls_targets_list,
              reg_targets_list,
+             level_list,
              img_metas=img_metas,
              cfg=cfg,
              gt_bboxes_ignore=None)
@@ -395,9 +398,11 @@ class FSAFHead(AnchorHead):
             
             # predicted bbox
             y,x = torch.meshgrid([torch.arange(b_e_xyxy[1],b_e_xyxy[3]+1), torch.arange(b_e_xyxy[0],b_e_xyxy[2]+1)])
+            y = (y.float() + 0.5) * self.feat_strides[level]
+            x = (x.float() + 0.5) * self.feat_strides[level]
             xy = torch.cat([x.unsqueeze(2),y.unsqueeze(2)], dim=2).float().to(device)
-            w = (offsets[:,:,1] + offsets[:,:,3]).unsqueeze(2) * self.bbox_offset_norm
-            h = (offsets[:,:,0] + offsets[:,:,2]).unsqueeze(2) * self.bbox_offset_norm
+            w = (offsets[:,:,1] + offsets[:,:,3]).unsqueeze(2) * self.bbox_offset_norm * self.feat_strides[level]
+            h = (offsets[:,:,0] + offsets[:,:,2]).unsqueeze(2) * self.bbox_offset_norm * self.feat_strides[level]
             bbox_xywh = torch.cat([xy,w,h], dim=2)  # (b_e_H,b_e_W,4)
             bbox_xywh = bbox_xywh.view(-1,4)  # (-1,4)
             bbox_xyxy = self.xywh2xyxy(bbox_xywh)
@@ -446,17 +451,20 @@ class FSAFHead(AnchorHead):
         dtype = bbox_preds[0].dtype
         scale_factor = img_metas[0]['scale_factor']
         
+        # generate center-points
         xy_list = []
         for level in range(num_levels):
             H,W = bbox_preds[level].shape[2:]
             y,x = torch.meshgrid([torch.arange(0,H), torch.arange(0,W)])
+            y = (y.float() + 0.5) * self.feat_strides[level]
+            x = (x.float() + 0.5) * self.feat_strides[level]
             xy = torch.cat([x.unsqueeze(2),y.unsqueeze(2)], dim=2).float().to(device)
             xy = xy.permute(2,0,1).unsqueeze(0)
             xy_list.append(xy)
             
         mlvl_bboxes = []
         mlvl_scores = []
-        for cls_score, bbox_pred, xy in zip(cls_scores, bbox_preds, xy_list):
+        for level, (cls_score, bbox_pred, xy) in enumerate(zip(cls_scores, bbox_preds, xy_list)):
             assert cls_score.size()[-2:] == bbox_pred.size()[-2:]
             cls_score = cls_score[0].permute(1, 2, 0).reshape(
                 -1, self.cls_out_channels)
@@ -471,10 +479,10 @@ class FSAFHead(AnchorHead):
                 scores = scores[topk_inds, :]
                 xy = xy[topk_inds, :]
             
-            # decode offsets to get bbox
-            w = (bbox_pred[:,1] + bbox_pred[:,3]).unsqueeze(1) * self.bbox_offset_norm
-            h = (bbox_pred[:,0] + bbox_pred[:,2]).unsqueeze(1) * self.bbox_offset_norm
-            bbox_xywh = torch.cat([xy,w,h], dim=1)  # (N,4)
+            # decode predicted offsets to get final bbox
+            w = (bbox_pred[:,1] + bbox_pred[:,3]).unsqueeze(1) * self.bbox_offset_norm * self.feat_strides[level]
+            h = (bbox_pred[:,0] + bbox_pred[:,2]).unsqueeze(1) * self.bbox_offset_norm * self.feat_strides[level]
+            bbox_xywh = torch.cat([xy,w,h], dim=1) # (N,4)
             bbox_xyxy = self.xywh2xyxy(bbox_xywh)
             
             mlvl_bboxes.append(bbox_xyxy)
