@@ -3,6 +3,8 @@ import torch
 from ..bbox import PseudoSampler, assign_and_sample, bbox2delta, build_assigner
 from ..utils import multi_apply
 
+import pdb
+
 
 def anchor_target(anchor_list,
                   valid_flag_list,
@@ -154,7 +156,7 @@ def anchor_target_single(flat_anchors,
         label_weights = unmap(label_weights, num_total_anchors, inside_flags)
         bbox_targets = unmap(bbox_targets, num_total_anchors, inside_flags)
         bbox_weights = unmap(bbox_weights, num_total_anchors, inside_flags)
-
+        
     return (labels, label_weights, bbox_targets, bbox_weights, pos_inds,
             neg_inds)
 

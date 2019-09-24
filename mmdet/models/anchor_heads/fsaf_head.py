@@ -105,6 +105,7 @@ class FSAFHead(AnchorHead):
         
         return cls_score, bbox_pred
     
+    # per-level loss operation
     def loss_single(self,
              cls_scores,
              bbox_preds,
@@ -124,7 +125,6 @@ class FSAFHead(AnchorHead):
         loss_cls = sigmoid_focal_loss(scores[valid_cls_idx], labels[valid_cls_idx],
                            gamma=self.FL_gamma, alpha=self.FL_alpha, reduction='sum')
         norm_cls = (labels == 1).long().sum()
-        #loss_cls /= norm_cls
         
         # loss-reg
         offsets = bbox_preds.permute(0,2,3,1).reshape(-1,4)
@@ -142,18 +142,16 @@ class FSAFHead(AnchorHead):
             xy = xy.permute(2,0,1).unsqueeze(0).repeat(num_imgs,1,1,1)
             xy = xy.permute(0,2,3,1).reshape(-1,2)
             xy = xy[valid_reg_idx]
-            w = (offsets[:,1] + offsets[:,3]).unsqueeze(1) * self.bbox_offset_norm * self.feat_strides[level]
-            h = (offsets[:,0] + offsets[:,2]).unsqueeze(1) * self.bbox_offset_norm * self.feat_strides[level]
-            bbox_xywh = torch.cat([xy,w,h], dim=1)  # (N,4)
-            bbox_xyxy = self.xywh2xyxy(bbox_xywh)
-
-            loss_reg = iou_loss(bbox_xyxy, gtboxes)
+            
+            dist_pred = offsets * self.feat_strides[level]
+            bboxes = self.dist2bbox(xy, dist_pred, self.bbox_offset_norm)
+            
+            loss_reg = iou_loss(bboxes, gtboxes, reduction='sum')
             norm_reg = valid_reg_idx.long().sum()
-            #loss_reg /= norm_reg
         else:
             loss_reg = torch.tensor(0).float().to(device)
             norm_reg = torch.tensor(0).float().to(device)
-        
+            
         return loss_cls, loss_reg, norm_cls, norm_reg
 
     def loss(self,
@@ -193,77 +191,6 @@ class FSAFHead(AnchorHead):
         
         return dict(loss_cls=loss_cls, loss_bbox=loss_reg)
     
-    
-    '''
-    #----------------------
-    # loss w/o multi_apply()
-    #----------------------
-    def loss(self,
-             cls_scores,
-             bbox_preds,
-             gt_bboxes,
-             gt_labels,
-             img_metas,
-             cfg,
-             gt_bboxes_ignore=None):
-        
-        cls_reg_targets = self.fsaf_target(
-            cls_scores,
-            bbox_preds,
-            gt_bboxes,
-            gt_labels,
-            img_metas,
-            cfg,
-            gt_bboxes_ignore_list=gt_bboxes_ignore)
-        
-        (cls_targets_list, reg_targets_list) = cls_reg_targets
-        
-        device = cls_scores[0].device
-        num_imgs = len(gt_bboxes)
-        
-        loss_cls = 0
-        loss_reg = 0
-        norm_cls = 0
-        norm_reg = 0
-        
-        num_levels = len(cls_targets_list)
-        for level in range(num_levels):
-            # loss-cls
-            scores = cls_scores[level].permute(0,2,3,1).reshape(-1,1)
-            labels = cls_targets_list[level].permute(0,2,3,1).reshape(-1)
-            valid_cls_idx = labels != -1
-            loss_cls += sigmoid_focal_loss(scores[valid_cls_idx], labels[valid_cls_idx],
-                               gamma=self.FL_gamma, alpha=self.FL_alpha, reduction='sum')
-            norm_cls += (labels == 1).long().sum()
-            
-            # loss-reg
-            offsets = bbox_preds[level].permute(0,2,3,1).reshape(-1,4)
-            gtboxes = reg_targets_list[level].permute(0,2,3,1).reshape(-1,4)
-            valid_reg_idx = (gtboxes[:,0] != -1)
-            if valid_reg_idx.long().sum() != 0:
-                offsets = offsets[valid_reg_idx]
-                gtboxes = gtboxes[valid_reg_idx]
-
-                H,W = bbox_preds[level].shape[2:]
-                y,x = torch.meshgrid([torch.arange(0,H), torch.arange(0,W)])
-                xy = torch.cat([x.unsqueeze(2),y.unsqueeze(2)], dim=2).float().to(device)
-                xy = xy.permute(2,0,1).unsqueeze(0).repeat(num_imgs,1,1,1)
-                xy = xy.permute(0,2,3,1).reshape(-1,2)
-                xy = xy[valid_reg_idx]
-                w = (offsets[:,1] + offsets[:,3]).unsqueeze(1) * self.bbox_offset_norm
-                h = (offsets[:,0] + offsets[:,2]).unsqueeze(1) * self.bbox_offset_norm
-                bbox_xywh = torch.cat([xy,w,h], dim=1)  # (N,4)
-                bbox_xyxy = self.xywh2xyxy(bbox_xywh)
-
-                loss_reg += iou_loss(bbox_xyxy, gtboxes)
-                norm_reg += valid_reg_idx.long().sum()
-            #print(loss_reg)
-        loss_cls /= norm_cls
-        loss_reg /= norm_reg
-        #pdb.set_trace()
-        return dict(loss_cls=loss_cls, loss_bbox=loss_reg)
-    '''
-    
     def fsaf_target(self,
                      cls_scores,
                      bbox_preds,
@@ -295,7 +222,7 @@ class FSAFHead(AnchorHead):
         # generate online GT
         num_imgs = len(gt_bboxes)
         for img in range(num_imgs):
-            # sort objects according to its size
+            # sort objects according to their size
             gt_bboxes_img_xyxy = gt_bboxes[img]
             gt_bboxes_img_xywh = self.xyxy2xywh(gt_bboxes_img_xyxy)
             gt_bboxes_img_size = gt_bboxes_img_xywh[:,-2] * gt_bboxes_img_xywh[:,-1]
@@ -389,26 +316,26 @@ class FSAFHead(AnchorHead):
             label = torch.ones_like(score).long()
             label = label.contiguous().view(-1)
             
-            loss_cls = sigmoid_focal_loss(score, label, gamma=self.FL_gamma, alpha=self.FL_alpha, reduction='sum')
-            loss_cls /= N
+            loss_cls = sigmoid_focal_loss(score, label, gamma=self.FL_gamma, alpha=self.FL_alpha, reduction='mean')
+            #loss_cls /= N
             
             # reg loss; IoU
             offsets = bbox_preds_img[level][:,b_e_xyxy[1]:b_e_xyxy[3]+1,b_e_xyxy[0]:b_e_xyxy[2]+1]
             offsets = offsets.contiguous().permute(1,2,0)  # (b_e_H,b_e_W,4)
+            offsets = offsets.reshape(-1,4) # (#pix-e,4)
             
             # predicted bbox
             y,x = torch.meshgrid([torch.arange(b_e_xyxy[1],b_e_xyxy[3]+1), torch.arange(b_e_xyxy[0],b_e_xyxy[2]+1)])
             y = (y.float() + 0.5) * self.feat_strides[level]
             x = (x.float() + 0.5) * self.feat_strides[level]
             xy = torch.cat([x.unsqueeze(2),y.unsqueeze(2)], dim=2).float().to(device)
-            w = (offsets[:,:,1] + offsets[:,:,3]).unsqueeze(2) * self.bbox_offset_norm * self.feat_strides[level]
-            h = (offsets[:,:,0] + offsets[:,:,2]).unsqueeze(2) * self.bbox_offset_norm * self.feat_strides[level]
-            bbox_xywh = torch.cat([xy,w,h], dim=2)  # (b_e_H,b_e_W,4)
-            bbox_xywh = bbox_xywh.view(-1,4)  # (-1,4)
-            bbox_xyxy = self.xywh2xyxy(bbox_xywh)
+            xy = xy.reshape(-1,2)
             
-            loss_reg = iou_loss(bbox_xyxy, gt_bbox_obj_xyxy.unsqueeze(0).repeat(N,1))
-            loss_reg /= N
+            dist_pred = offsets * self.feat_strides[level]
+            bboxes = self.dist2bbox(xy, dist_pred, self.bbox_offset_norm)
+            
+            loss_reg = iou_loss(bboxes, gt_bbox_obj_xyxy.unsqueeze(0).repeat(N,1), reduction='mean')
+            #loss_cls /= N
             
             loss = loss_cls + loss_reg
             
@@ -441,10 +368,20 @@ class FSAFHead(AnchorHead):
         else:
             return torch.cat((xywh[:, 0:2] - 0.5 * xywh[:, 2:4], xywh[:, 0:2] + 0.5 * xywh[:, 2:4]), dim=1)
         
+    def dist2bbox(self, center, dist_pred, norm_const):
+        '''
+        args
+            center    ; (N,2)
+            bbox_pred ; (N,4)
+        '''
+        x1y1 = center - (norm_const * torch.cat([dist_pred[:,1].unsqueeze(1),dist_pred[:,0].unsqueeze(1)],dim=1))
+        x2y2 = center + (norm_const * torch.cat([dist_pred[:,3].unsqueeze(1),dist_pred[:,2].unsqueeze(1)],dim=1))
+        bbox = torch.cat([x1y1,x2y2],dim=1)
+        return bbox
         
     def get_bboxes(self, cls_scores, bbox_preds, img_metas, cfg,
                    rescale=False):
-        # Only single-img evaluation is available now
+        # note: only single-img evaluation is available now
         num_levels = len(cls_scores)
         assert len(cls_scores) == len(bbox_preds) == num_levels
         device = bbox_preds[0].device
@@ -470,7 +407,7 @@ class FSAFHead(AnchorHead):
                 -1, self.cls_out_channels)
             scores = cls_score.sigmoid()
             bbox_pred = bbox_pred[0].permute(1, 2, 0).reshape(-1, 4)
-            xy = xy[0].permute(1,2,0).reshape(-1,2)
+            xy = xy[0].permute(1, 2, 0).reshape(-1, 2)
             nms_pre = cfg.get('nms_pre', -1)
             if nms_pre > 0 and scores.shape[0] > nms_pre:
                 max_scores, _ = scores.max(dim=1)
@@ -479,23 +416,23 @@ class FSAFHead(AnchorHead):
                 scores = scores[topk_inds, :]
                 xy = xy[topk_inds, :]
             
-            # decode predicted offsets to get final bbox
-            w = (bbox_pred[:,1] + bbox_pred[:,3]).unsqueeze(1) * self.bbox_offset_norm * self.feat_strides[level]
-            h = (bbox_pred[:,0] + bbox_pred[:,2]).unsqueeze(1) * self.bbox_offset_norm * self.feat_strides[level]
-            bbox_xywh = torch.cat([xy,w,h], dim=1) # (N,4)
-            bbox_xyxy = self.xywh2xyxy(bbox_xywh)
+            # decode predicted bbox offsets to get final bbox
+            dist_pred = bbox_pred * self.feat_strides[level]
+            bboxes = self.dist2bbox(xy, dist_pred, self.bbox_offset_norm)
             
-            mlvl_bboxes.append(bbox_xyxy)
+            mlvl_bboxes.append(bboxes)
             mlvl_scores.append(scores)
         mlvl_bboxes = torch.cat(mlvl_bboxes)
         
         if rescale:
             mlvl_bboxes /= mlvl_bboxes.new_tensor(scale_factor)
         mlvl_scores = torch.cat(mlvl_scores)
-        padding = mlvl_scores.new_zeros(mlvl_scores.shape[0], 1)
-        mlvl_scores = torch.cat([padding, mlvl_scores], dim=1)
-        det_bboxes, det_labels = multiclass_nms(
-            mlvl_bboxes, mlvl_scores, cfg.score_thr, cfg.nms, cfg.max_per_img)
+        if self.use_sigmoid_cls:
+            padding = mlvl_scores.new_zeros(mlvl_scores.shape[0], 1)
+            mlvl_scores = torch.cat([padding, mlvl_scores], dim=1)
+        det_bboxes, det_labels = multiclass_nms(mlvl_bboxes, mlvl_scores,
+                                                cfg.score_thr, cfg.nms,
+                                                cfg.max_per_img)
         return [(det_bboxes, det_labels)]
     
     
