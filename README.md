@@ -38,7 +38,7 @@ For evaluation, pretrained model-weights should be located at "./models/here".
 
 ## Benchmark
 
-Below is benchmark results. All models are trained with an image-size of 400 and reduced LR-schedule for efficient experiments. Reproduced results show a similar aspect to the original paper (Table 1), demonstrating sanity of the implementation.
+Below is benchmark results. All models are trained with an image-size of 400 and reduced LR-schedule for efficient experiments. Reproduced results show a similar aspect to the original paper (Table 1,2), demonstrating sanity of the implementation.
 
 |  model        |    backbone    | img-size | LR-schd | box AP | box AP_50 | box AP_75 | download |
 |:----------:   |:-------------: | :-----:  | :-----: | :----: | :------:  | :------:  | :------: |
