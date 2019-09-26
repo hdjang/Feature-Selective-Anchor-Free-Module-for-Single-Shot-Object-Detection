@@ -47,7 +47,7 @@ Below is benchmark results. All models are trained with an image-size of 400 and
 
 
 ## TODO
-- Code reorganization is needed to be consistent with the style of MMDetection framework (Current code is only written for fast prototyping). 
+- Code reorganization is needed to be consistent with the style of MMDetection framework (current code is only written for fast prototyping). 
 
 
 ## Contact
