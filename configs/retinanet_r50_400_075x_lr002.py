@@ -101,7 +101,7 @@ data = dict(
         img_prefix=data_root + 'val2017/',
         pipeline=test_pipeline))
 # optimizer
-optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -109,7 +109,7 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    step=[4, 5])
+    step=[6, 8])
 checkpoint_config = dict(interval=1)
 # yapf:disable
 log_config = dict(
@@ -120,11 +120,11 @@ log_config = dict(
     ])
 # yapf:enable
 # runtime settings
-total_epochs = 6
+total_epochs = 9
 device_ids = range(8)
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = './work_dirs/retinanet_r50_400_050x'
+work_dir = './work_dirs/retinanet_r50_400_075x_lr002'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]
