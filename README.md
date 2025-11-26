@@ -52,6 +52,5 @@ Below is benchmark results. All models are trained with an image-size of 400 and
 
 ## Contact
 
-- Ho-Deok Jang
-- Email: hdjang@kaist.ac.kr
-- Homepage: https://sites.google.com/view/hdjangcv
+- Hodeok Jang
+- Email: openhd34@gmail.com
